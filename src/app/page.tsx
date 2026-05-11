@@ -2,6 +2,63 @@
 
 import { useState } from "react";
 
+const MAX_UPLOAD_IMAGE_SIDE = 1600;
+const JPEG_UPLOAD_QUALITY = 0.82;
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Не удалось подготовить изображение."));
+    };
+    image.src = url;
+  });
+}
+
+async function preparePhotoForUpload(file: File): Promise<File> {
+  const image = await loadImageFromFile(file);
+  const scale = Math.min(
+    1,
+    MAX_UPLOAD_IMAGE_SIDE / Math.max(image.naturalWidth, image.naturalHeight)
+  );
+
+  if (scale === 1 && file.size <= 2 * 1024 * 1024 && file.type === "image/jpeg") {
+    return file;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return file;
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", JPEG_UPLOAD_QUALITY);
+  });
+
+  if (!blob) {
+    return file;
+  }
+
+  const name = file.name.replace(/\.[^.]+$/, "") || "client-photo";
+  return new File([blob], `${name}.jpg`, {
+    type: "image/jpeg",
+    lastModified: Date.now(),
+  });
+}
+
 export default function Home() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -9,14 +66,16 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [consent, setConsent] = useState(true);
   const [error, setError] = useState("");
+  const [photoInfo, setPhotoInfo] = useState("");
   /** Заполняется только если на сервере BARBER_DEBUG_PROMPTS=1 */
   const [debugNanoBananaPrompt, setDebugNanoBananaPrompt] = useState("");
 
-  function handlePhotoChange(file: File | null) {
+  async function handlePhotoChange(file: File | null) {
     setError("");
     setResultUrl("");
     setDebugNanoBananaPrompt("");
-    setPhoto(file);
+    setPhoto(null);
+    setPhotoInfo("");
 
     if (!file) {
       setPreviewUrl("");
@@ -25,6 +84,22 @@ export default function Home() {
 
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
+
+    try {
+      const prepared = await preparePhotoForUpload(file);
+      setPhoto(prepared);
+      if (prepared.size < file.size) {
+        setPhotoInfo(
+          `Фото сжато для отправки: ${(file.size / 1024 / 1024).toFixed(
+            1
+          )} → ${(prepared.size / 1024 / 1024).toFixed(1)} МБ`
+        );
+      }
+    } catch (err: unknown) {
+      setPhoto(file);
+      setPhotoInfo("");
+      console.warn("Не удалось сжать фото перед отправкой:", err);
+    }
   }
 
   async function handleGenerate() {
@@ -124,6 +199,10 @@ export default function Home() {
                   className="block w-full cursor-pointer rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-neutral-300 file:mr-4 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-medium file:text-black"
                 />
               </label>
+
+              {photoInfo && (
+                <p className="mt-3 text-xs text-neutral-400">{photoInfo}</p>
+              )}
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
