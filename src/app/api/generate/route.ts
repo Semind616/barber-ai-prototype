@@ -27,6 +27,20 @@ function barberDebugPromptsEnabled(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
+/** Polza/OpenAI-compatible ошибки квоты — показываем клиенту без префикса Vision LLM. */
+function friendlyGenerateError(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("дневной лимит") ||
+    lower.includes("лимит по сумме") ||
+    lower.includes("daily limit") ||
+    lower.includes("insufficient_quota")
+  ) {
+    return "На стороне провайдера AI исчерпан дневной лимит расходов или баланс. Пополните счёт в Polza (или подождите сброса лимита). Это не связано с тем, с телефона или с компьютера загружаете фото.";
+  }
+  return message.replace(/^Vision LLM:\s*/i, "");
+}
+
 export async function POST(request: Request) {
   try {
     const apiKey = resolvePolzaApiKey();
@@ -102,10 +116,13 @@ export async function POST(request: Request) {
       }),
     });
   } catch (error: unknown) {
-    const message =
+    const raw =
       error instanceof Error ? error.message : "Ошибка сервера при обработке";
     console.error("API /api/generate:", error);
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: friendlyGenerateError(raw) },
+      { status: 500 }
+    );
   }
 }
