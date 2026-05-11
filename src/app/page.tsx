@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 const MAX_UPLOAD_IMAGE_SIDE = 1600;
-const JPEG_UPLOAD_QUALITY = 0.82;
+const MIN_UPLOAD_IMAGE_SIDE = 640;
+const TARGET_UPLOAD_IMAGE_BYTES = 400 * 1024;
+const JPEG_UPLOAD_QUALITIES = [0.82, 0.74, 0.66, 0.58, 0.5, 0.44];
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -22,38 +24,66 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   });
 }
 
+function formatPhotoSize(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} КБ`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
 async function preparePhotoForUpload(file: File): Promise<File> {
   const image = await loadImageFromFile(file);
-  const scale = Math.min(
-    1,
-    MAX_UPLOAD_IMAGE_SIDE / Math.max(image.naturalWidth, image.naturalHeight)
-  );
 
-  if (scale === 1 && file.size <= 2 * 1024 * 1024 && file.type === "image/jpeg") {
+  if (file.size <= TARGET_UPLOAD_IMAGE_BYTES && file.type === "image/jpeg") {
     return file;
   }
 
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const originalMaxSide = Math.max(image.naturalWidth, image.naturalHeight);
+  let maxSide = Math.min(originalMaxSide, MAX_UPLOAD_IMAGE_SIDE);
+  let bestBlob: Blob | null = null;
 
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return file;
+  while (maxSide >= MIN_UPLOAD_IMAGE_SIDE) {
+    const scale = Math.min(1, maxSide / originalMaxSide);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return file;
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of JPEG_UPLOAD_QUALITIES) {
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, "image/jpeg", quality);
+      });
+
+      if (!blob) {
+        continue;
+      }
+
+      if (!bestBlob || blob.size < bestBlob.size) {
+        bestBlob = blob;
+      }
+
+      if (blob.size <= TARGET_UPLOAD_IMAGE_BYTES) {
+        bestBlob = blob;
+        maxSide = 0;
+        break;
+      }
+    }
+
+    maxSide = Math.floor(maxSide * 0.8);
   }
 
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", JPEG_UPLOAD_QUALITY);
-  });
-
-  if (!blob) {
+  if (!bestBlob) {
     return file;
   }
 
   const name = file.name.replace(/\.[^.]+$/, "") || "client-photo";
-  return new File([blob], `${name}.jpg`, {
+  return new File([bestBlob], `${name}.jpg`, {
     type: "image/jpeg",
     lastModified: Date.now(),
   });
@@ -90,9 +120,9 @@ export default function Home() {
       setPhoto(prepared);
       if (prepared.size < file.size) {
         setPhotoInfo(
-          `Фото сжато для отправки: ${(file.size / 1024 / 1024).toFixed(
-            1
-          )} → ${(prepared.size / 1024 / 1024).toFixed(1)} МБ`
+          `Фото сжато для отправки: ${formatPhotoSize(
+            file.size
+          )} → ${formatPhotoSize(prepared.size)}`
         );
       }
     } catch (err: unknown) {
