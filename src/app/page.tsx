@@ -1,12 +1,29 @@
 "use client";
 
 import NextImage from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MAX_UPLOAD_IMAGE_SIDE = 1600;
 const MIN_UPLOAD_IMAGE_SIDE = 640;
 const TARGET_UPLOAD_IMAGE_BYTES = 400 * 1024;
 const JPEG_UPLOAD_QUALITIES = [0.82, 0.74, 0.66, 0.58, 0.5, 0.44];
+const LOADING_MESSAGES = [
+  "Приглашаем стилиста к зеркалу",
+  "Стилист изучает форму лица",
+  "Передаем задачу барберу",
+  "Барбер оценивает линию роста волос",
+  "Стилист подбирает настроение образа",
+  "Барбер примеряет подходящую длину",
+  "Смотрим, как образ будет выглядеть в фас",
+  "Проверяем профиль",
+  "Стилист оставляет только лучшие варианты",
+  "Барбер доводит контуры",
+  "Собираем финальный образ",
+  "Команда проверяет детали",
+  "Добавляем уверенности в кадр",
+  "Делаем последний штрих",
+  "Образ почти готов",
+];
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -97,11 +114,24 @@ export default function Home() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [resultUrl, setResultUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [consent, setConsent] = useState(true);
   const [error, setError] = useState("");
   const [photoInfo, setPhotoInfo] = useState("");
   /** Заполняется только если на сервере BARBER_DEBUG_PROMPTS=1 */
   const [debugNanoBananaPrompt, setDebugNanoBananaPrompt] = useState("");
+
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setLoadingMessageIndex((current) => (current + 1) % LOADING_MESSAGES.length);
+    }, 2400);
+
+    return () => window.clearInterval(intervalId);
+  }, [loading]);
 
   async function handlePhotoChange(file: File | null) {
     const selectionId = photoSelectionIdRef.current + 1;
@@ -179,6 +209,7 @@ export default function Home() {
     }
   
     setError("");
+    setLoadingMessageIndex(0);
     setLoading(true);
     setResultUrl("");
     setDebugNanoBananaPrompt("");
@@ -355,10 +386,21 @@ export default function Home() {
             </button>
 
             {loading && (
-              <p className="mt-4 text-center text-sm text-neutral-300">
-                Анализ фото через GPT, затем генерация изображения — это может
-                занять до нескольких минут...
-              </p>
+              <div className="mt-4 flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-5 text-center">
+                <div className="flex items-center gap-2" aria-hidden="true">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white [animation-delay:300ms]" />
+                </div>
+
+                <p className="text-sm font-medium text-white">
+                  {LOADING_MESSAGES[loadingMessageIndex]}
+                </p>
+
+                <p className="text-xs text-neutral-400">
+                  Обычно это занимает пару минут. Не закрывайте страницу.
+                </p>
+              </div>
             )}
 
             {error && (
