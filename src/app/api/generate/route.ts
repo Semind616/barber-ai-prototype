@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
 import { BARBER_VISION_SYSTEM } from "@/lib/barberPrompts";
-import { barberLayoutTemplateUrl } from "@/lib/barberLayoutTemplate";
 import {
   createPolzaNanoBananaTask,
   waitPolzaMediaResultUrl,
 } from "@/lib/polzaNanoBanana";
 import { requestBarberPromptFromGpt } from "@/lib/openaiVision";
-import {
-  isLikelyUnreachableForExternalFetch,
-  resolvePublicAppUrl,
-} from "@/lib/publicAppUrl";
-import { putTempImage } from "@/lib/tempImageStore";
 
 export const runtime = "nodejs";
 
@@ -36,7 +30,7 @@ function friendlyGenerateError(message: string): string {
     lower.includes("daily limit") ||
     lower.includes("insufficient_quota")
   ) {
-    return "На стороне провайдера AI исчерпан дневной лимит расходов или баланс. Пополните счёт в Polza (или подождите сброса лимита). Это не связано с тем, с телефона или с компьютера загружаете фото.";
+    return "Провайдер AI вернул ограничение по лимиту или расходам. Баланс может быть положительным — проверьте лимиты API-ключа и выбранной модели в Polza.";
   }
   return message.replace(/^Vision LLM:\s*/i, "");
 }
@@ -64,23 +58,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const publicBase = resolvePublicAppUrl(request);
-    if (isLikelyUnreachableForExternalFetch(publicBase)) {
-      return NextResponse.json(
-        {
-          error:
-            "Нужен публичный URL приложения, чтобы Polza скачала исходные фото. Укажите APP_BASE_URL (например https://ваш-домен.vercel.app) или ngrok при локальной разработке.",
-        },
-        { status: 400 }
-      );
-    }
-
     const arrayBuffer = await photo.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64 = buffer.toString("base64");
-    const token = putTempImage(buffer, photo.type);
-    const sourceImageUrl = `${publicBase}/api/temp-image/${token}`;
-    const templateImageUrl = barberLayoutTemplateUrl(publicBase);
 
     const imagePrompt = await requestBarberPromptFromGpt({
       apiKey,
@@ -96,7 +76,7 @@ export async function POST(request: Request) {
     const submit = await createPolzaNanoBananaTask({
       apiKey,
       prompt: imagePrompt,
-      imageUrls: [sourceImageUrl, templateImageUrl],
+      images: [{ type: "base64", data: base64 }],
       aspectRatio: "9:16",
     });
 

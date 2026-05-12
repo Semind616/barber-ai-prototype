@@ -19,19 +19,14 @@ function defaultNanoBananaModel(): string {
 
 function buildNanoBananaInput(params: {
   prompt: string;
-  imageUrls: string[];
+  images: PolzaMediaImage[];
   aspectRatio: string;
   model: string;
 }) {
-  const images = params.imageUrls.map((url) => ({
-    type: "url" as const,
-    data: url,
-  }));
-
   const input: Record<string, unknown> = {
     prompt: params.prompt,
     aspect_ratio: params.aspectRatio,
-    images,
+    images: params.images,
     output_format: "png",
   };
 
@@ -166,18 +161,23 @@ type CreateResponse = {
   error?: { message?: string; code?: string };
 };
 
+type PolzaMediaImage = {
+  type: "url" | "base64";
+  data: string;
+};
+
 export type PolzaNanoBananaSubmit =
   | { kind: "sync"; url: string }
   | { kind: "async"; mediaId: string };
 
 /**
- * Создаёт задачу редактирования (референсы по URL + промпт).
+ * Создаёт задачу редактирования (референсы + промпт).
  * Редко API может вернуть resultado сразу (sync).
  */
 export async function createPolzaNanoBananaTask(params: {
   apiKey: string;
   prompt: string;
-  imageUrls: string[];
+  images: PolzaMediaImage[];
   aspectRatio?: string;
 }): Promise<PolzaNanoBananaSubmit> {
   const model = defaultNanoBananaModel();
@@ -187,7 +187,7 @@ export async function createPolzaNanoBananaTask(params: {
     async: true,
     input: buildNanoBananaInput({
       prompt: params.prompt,
-      imageUrls: params.imageUrls,
+      images: params.images,
       aspectRatio: params.aspectRatio ?? "9:16",
       model,
     }),
