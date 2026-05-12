@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import NextImage from "next/image";
+import { useRef, useState } from "react";
 
 const MAX_UPLOAD_IMAGE_SIDE = 1600;
 const MIN_UPLOAD_IMAGE_SIDE = 640;
@@ -90,6 +91,8 @@ async function preparePhotoForUpload(file: File): Promise<File> {
 }
 
 export default function Home() {
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoSelectionIdRef = useRef(0);
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [resultUrl, setResultUrl] = useState("");
@@ -101,11 +104,18 @@ export default function Home() {
   const [debugNanoBananaPrompt, setDebugNanoBananaPrompt] = useState("");
 
   async function handlePhotoChange(file: File | null) {
+    const selectionId = photoSelectionIdRef.current + 1;
+    photoSelectionIdRef.current = selectionId;
+
     setError("");
     setResultUrl("");
     setDebugNanoBananaPrompt("");
     setPhoto(null);
     setPhotoInfo("");
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
 
     if (!file) {
       setPreviewUrl("");
@@ -117,6 +127,9 @@ export default function Home() {
 
     try {
       const prepared = await preparePhotoForUpload(file);
+      if (photoSelectionIdRef.current !== selectionId) {
+        return;
+      }
       setPhoto(prepared);
       if (prepared.size < file.size) {
         setPhotoInfo(
@@ -126,10 +139,32 @@ export default function Home() {
         );
       }
     } catch (err: unknown) {
+      if (photoSelectionIdRef.current !== selectionId) {
+        return;
+      }
       setPhoto(file);
       setPhotoInfo("");
       console.warn("Не удалось сжать фото перед отправкой:", err);
     }
+  }
+
+  function handleClearPhoto() {
+    photoSelectionIdRef.current += 1;
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    if (photoInputRef.current) {
+      photoInputRef.current.value = "";
+    }
+
+    setPhoto(null);
+    setPreviewUrl("");
+    setResultUrl("");
+    setDebugNanoBananaPrompt("");
+    setPhotoInfo("");
+    setError("");
   }
 
   async function handleGenerate() {
@@ -179,56 +214,85 @@ export default function Home() {
       <div className="mx-auto flex min-h-[calc(100vh-64px)] max-w-4xl items-center justify-center">
         <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl md:p-8">
           <div className="mb-8 text-center">
-            <p className="mb-3 text-sm font-medium uppercase tracking-[0.35em] text-neutral-500">
-              AI Barber Preview
-            </p>
+            <div className="mb-6 flex flex-col items-center gap-4">
+              <div className="flex h-24 w-44 items-center justify-center rounded-full border border-white/10 bg-black/70 px-4 shadow-[0_0_40px_rgba(255,255,255,0.08)]">
+                <NextImage
+                  src="/brand/logo_eye.png"
+                  alt="BarberVision"
+                  width={414}
+                  height={236}
+                  preload
+                  className="h-auto w-full"
+                />
+              </div>
+
+              <NextImage
+                src="/brand/logo_text.png"
+                alt="BarberVision"
+                width={603}
+                height={140}
+                preload
+                className="h-auto w-64 max-w-full md:w-80"
+              />
+            </div>
 
             <h1 className="text-3xl font-semibold tracking-tight md:text-5xl">
               Подбери стрижку по фото
             </h1>
 
             <p className="mx-auto mt-4 max-w-2xl text-base text-neutral-300 md:text-lg">
-              Загрузи фотографию, и система создаст итоговый образ в стиле
-              барбершопа. Промпты и внутренняя логика скрыты от клиента.
+              Загрузи фотографию, и мы подберем тебе самый подходящий образ.
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
             <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-medium">Фото клиента</h2>
+                <h2 className="font-medium">Ваше фото</h2>
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-neutral-300">
                   Шаг 1
                 </span>
               </div>
 
-              {previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- Object URLs from file input are not optimized by next/image.
-                <img
-                  src={previewUrl}
-                  alt="Загруженное фото"
-                  className="mb-4 aspect-square w-full rounded-2xl object-cover"
-                />
-              ) : (
-                <div className="mb-4 flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-6 text-center text-sm text-neutral-500">
-                  Здесь появится загруженное фото
-                </div>
-              )}
+              <div className="relative">
+                <label className="group block cursor-pointer">
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      handlePhotoChange(event.target.files?.[0] || null)
+                    }
+                    className="sr-only"
+                  />
 
-              <label className="block">
-                <span className="mb-2 block text-sm text-neutral-300">
-                  Загрузить фотографию
-                </span>
+                  {previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- Object URLs from file input are not optimized by next/image.
+                    <img
+                      src={previewUrl}
+                      alt="Загруженное фото"
+                      className="aspect-square w-full rounded-2xl object-cover transition hover:opacity-90"
+                    />
+                  ) : (
+                    <div className="flex aspect-square w-full items-center justify-center rounded-2xl bg-white/[0.03] p-6 text-center text-sm font-medium text-white transition hover:bg-white/[0.06]">
+                      <span className="rounded-2xl border border-dashed border-white/30 px-5 py-4 transition group-hover:border-white/50">
+                        Нажми, чтобы загрузить свое фото
+                      </span>
+                    </div>
+                  )}
+                </label>
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) =>
-                    handlePhotoChange(event.target.files?.[0] || null)
-                  }
-                  className="block w-full cursor-pointer rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-neutral-300 file:mr-4 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-medium file:text-black"
-                />
-              </label>
+                {previewUrl && (
+                  <button
+                    type="button"
+                    onClick={handleClearPhoto}
+                    aria-label="Удалить выбранное фото"
+                    className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xl leading-none text-white shadow-lg transition hover:bg-white hover:text-black"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
 
               {photoInfo && (
                 <p className="mt-3 text-xs text-neutral-400">{photoInfo}</p>
@@ -237,7 +301,7 @@ export default function Home() {
 
             <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-medium">Итоговое изображение</h2>
+                <h2 className="font-medium">Подходящий образ</h2>
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-neutral-300">
                   Шаг 2
                 </span>
@@ -251,23 +315,19 @@ export default function Home() {
                   className="mb-4 aspect-square w-full rounded-2xl object-cover"
                 />
               ) : (
-                <div className="mb-4 flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-6 text-center text-sm text-neutral-500">
+                <div className="flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-6 text-center text-sm text-neutral-500">
                   Здесь появится готовый результат
                 </div>
               )}
 
-              {resultUrl ? (
+              {resultUrl && (
                 <a
                   href={resultUrl}
                   download="barber-result.png"
                   className="block rounded-xl bg-white px-4 py-3 text-center text-sm font-medium text-black transition hover:bg-neutral-200"
                 >
-                  Скачать результат
+                  Сохранить образ
                 </a>
-              ) : (
-                <div className="rounded-xl bg-white/5 px-4 py-3 text-center text-sm text-neutral-500">
-                  Результат пока не создан
-                </div>
               )}
             </section>
           </div>

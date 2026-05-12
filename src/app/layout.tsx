@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Barber AI Preview",
-  description: "Подбор барбер-образа по фотографии клиента",
+  title: "BarberVision",
+  description: "AI-подбор барбер-образа по фотографии клиента",
+  icons: {
+    icon: [{ url: "/brand/logo_eye.png", type: "image/png" }],
+    shortcut: "/brand/logo_eye.png",
+    apple: "/brand/logo_eye.png",
+  },
 };
 
 export default function RootLayout({
